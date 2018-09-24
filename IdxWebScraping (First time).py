@@ -92,9 +92,9 @@ def Idx_spider(Ticker, OutputFilePath):
 
 
 # File path to create csv for output result
-outputFilePath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\previousResult.csv"
+outputFilePath = "File Location to output result"
 # File path to import list of ticker
-tickerListPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\TickerList.csv"
+tickerListPath = "File that contains ticker
 
 # Create new csv file to output result
 CreateCsv(outputFilePath)
