@@ -110,11 +110,11 @@ def AntiJoin(current, previous):
 
 
 # Temp file to store web scraping in this time
-tempPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\temp_test.csv"
+tempPath = "Current result"
 # File path to import list of ticker
-tickerListPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\TickerList.csv"
+tickerListPath = "File that contains ticker"
 # File path of last time web scraping result
-previousResultPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\previousResult.csv"
+previousResultPath = "Previous result"
 
 # Create temp csv to store the data
 CreateTempCsv(tempPath)
