@@ -1,101 +1,90 @@
 # Objective: This python script is used to retrieve company announcement from IDX website
-#            Please use the this script for your first time web scraping or when new ticker added
-
+#               and send email alert to users when new announcement was found
 
 import requests
 import json
 import csv
 import pandas as pd
+import os
 
 
-# Function 1: create temp csv file for output result
-def CreateTempCsv(TempPath):
-    with open(TempPath, "w", newline='') as csvFile:
-        writer = csv.writer(csvFile, delimiter=",")
-        writer.writerow(['id', 'ticker', 'title', 'date', 'pdfID', 'filename', 'filePath'])
-
-
-# Function 2: import ticker
-def ReadTicker(TickerListPath):
-    with open(TickerListPath, "r", newline='') as csvFile:
+# Function 1: import ticker
+def ReadTicker(tickerListPath):
+    with open(tickerListPath, "r", newline='') as csvFile:
         reader = csv.reader(csvFile)
-        TickerList = list(reader)
+        tickerList = list(reader)
 
-    return TickerList
+    return tickerList
+
+
+# Function 2: Retrieve all announcement with specific ticker
+def Idx_spider(ticker):
+    req = requests.get('http://www.idx.co.id/umbraco/Surface/ListedCompany/GetAnnouncement?kodeEmiten=' + ticker + '&keyword=&indexFrom=0&pageSize=9999&dateFrom=&dateTo')
+    jsonObject = json.loads(req.text)
+
+    data_list = []
+
+    # For each annonucement
+    for replies in jsonObject['Replies']:
+        announcement = replies['pengumuman']
+        announcementId = announcement.get('Id')
+        ticker = announcement.get('Kode_Emiten').strip()
+        title = announcement.get('JudulPengumuman')
+        date = announcement.get('TglPengumuman')
+
+        for attachment in replies['attachments']:
+            if len(replies['attachments']) == 1:     # Case when no attachment in the announcement
+                data_list.append([announcementId, ticker, title, date])
+            elif attachment.get('IsAttachment'):
+                attachmentId = attachment.get('Id')
+                fileName = attachment.get('OriginalFilename')
+                filePath = attachment.get('FullSavePath')
+
+                data_list.append([announcementId, ticker, title, date, attachmentId, fileName, filePath])
+
+    return data_list
 
 
 # Function 3: import csv file to dataframe
-def ReadCsv(path):
-    dataframe = pd.read_csv(path, sep=",", usecols=['id', 'ticker', 'title', 'date', 'pdfID', 'filename', 'filePath'])
+def ReadCsv(path, headers):
+    dataframe = pd.read_csv(path, sep=",", usecols=headers)
     return dataframe
-
-
-# Function 4: Retrieve all announcement with specific ticker
-def Idx_spider(Ticker, TempPath):
-    # Get the json data of specify ticker from IDX website
-    req = requests.get('http://www.idx.co.id/umbraco/Surface/ListedCompany/GetAnnouncement?kodeEmiten=' + Ticker + '&keyword=&indexFrom=0&pageSize=9999&dateFrom=&dateTo')
-    jsonObject = json.loads(req.text)
-
-    # Output Dataset to csv file (Announcement and Attachment)
-    with open(TempPath, "a", newline='') as csvFile:
-        writer = csv.writer(csvFile, delimiter=",")
-        i = 0
-
-        # For each annonucement
-        while i < len(jsonObject['Replies']):
-            announcement = jsonObject['Replies'][i]['pengumuman']
-
-            if len(jsonObject['Replies'][i]['attachments']) > 1:
-                # If the announcement have attachment
-                for attachment in jsonObject['Replies'][i]['attachments']:
-                    isAttm = attachment.get('IsAttachment')
-                    if isAttm:
-                        announcementId = str(announcement.get('Id'))
-                        ticker = announcement.get('Kode_Emiten').strip()
-                        title = announcement.get('JudulPengumuman')
-                        date = announcement.get('TglPengumuman')
-                        attachmentId = attachment.get('Id')
-                        fileName = attachment.get('OriginalFilename')
-                        filePath = attachment.get('FullSavePath')
-
-                        # Write into csv
-                        writer.writerow([announcementId, ticker, title, date, attachmentId, fileName, filePath])
-            else:
-                # If the annonucement have no attachment
-                announcementId = str(announcement.get('Id'))
-                ticker = announcement.get('Kode_Emiten').strip()
-                title = announcement.get('JudulPengumuman')
-                date = announcement.get('TglPengumuman')
-                writer.writerow([announcementId, ticker, title, date])
-
-            i += 1
 
 
 # Function 4: Detect new change in current dataframe compare to previous
 def AntiJoin(current, previous):
 
-    diff = set(current.id).difference(previous.id)
-    print(current.id.isin(diff))
+    diff = set(current.announcementId).difference(previous.announcementId)
+    print(current.announcementId.isin(diff))
 
 
-tempPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\temp_test.csv"
-tickerListPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\TickerList.csv"
-previousResultPath = "\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\previousResult.csv"
-
-# Create temp csv to store the data
-CreateTempCsv(tempPath)
-
-# Import ticker
+# File path to import list of ticker
+tickerListPath = '\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\TickerList.csv'
 tickerList = ReadTicker(tickerListPath)
 
-# Retrieve info from IDX website by each ticker
+# File path of csv to contain web scraping result
+resultPath = '\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\result.csv'
+
+# Create list to contain web scraping result
+dataList = []
+
 for ticker in tickerList:
-        Idx_spider(str(ticker[0]), tempPath)
-        print(ticker[0])
+    dataList.extend(Idx_spider(str(ticker[0])))
+    print(ticker[0])
 
-# Import previous and current web scraping result to dataframe
-previousResult = ReadCsv(previousResultPath)
-currentResult = ReadCsv(tempPath)
+# Convert list to dataframe
+headers = ['announcementId', 'ticker', 'title', 'date', 'attachmentId', 'fileName', 'filePath']
+result = pd.DataFrame.from_records(dataList, columns=headers)
 
-# Anti join two dataframe to detect new announcement
-AntiJoin(currentResult, previousResult)
+# Check if 'result.csv' is already existed
+if (os.path.isfile(resultPath)):
+    previousResult = ReadCsv(resultPath, headers)
+    AntiJoin(result, previousResult)
+
+    ###### Function to import email list ######
+    ###### Function to send email alert ######
+
+    result.to_csv(resultPath, sep=',')
+else:
+    result.to_csv(resultPath, sep=',')
+    print('not exist')
