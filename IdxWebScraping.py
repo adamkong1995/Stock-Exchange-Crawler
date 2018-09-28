@@ -8,16 +8,18 @@ import pandas as pd
 import os
 
 
-# Function 1: import ticker
+# Function 1: import ticker list
 def ReadTicker(tickerListPath):
+    tickerList = []
     with open(tickerListPath, "r", newline='') as csvFile:
         reader = csv.reader(csvFile)
-        tickerList = list(reader)
+        for row in reader:
+            tickerList.extend(row)
 
     return tickerList
 
 
-# Function 2: Retrieve all announcement with specific ticker
+# Function 2: Retrieve all announcement with certain ticker
 def Idx_spider(ticker):
     req = requests.get('http://www.idx.co.id/umbraco/Surface/ListedCompany/GetAnnouncement?kodeEmiten=' + ticker + '&keyword=&indexFrom=0&pageSize=9999&dateFrom=&dateTo')
     jsonObject = json.loads(req.text)
@@ -51,7 +53,7 @@ def ReadCsv(path, headers):
     return dataframe
 
 
-# Function 4: Detect new change in current dataframe compare to previous
+# Function 4: Detect new announcement
 def AntiJoin(current, previous):
 
     diff = set(current.announcementId).difference(previous.announcementId)
@@ -69,8 +71,8 @@ resultPath = '\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\result
 dataList = []
 
 for ticker in tickerList:
-    dataList.extend(Idx_spider(str(ticker[0])))
-    print(ticker[0])
+    dataList.extend(Idx_spider(str(ticker)))
+    print(ticker)
 
 # Convert list to dataframe
 headers = ['announcementId', 'ticker', 'title', 'date', 'attachmentId', 'fileName', 'filePath']
