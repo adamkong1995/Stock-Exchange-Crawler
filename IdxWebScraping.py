@@ -6,6 +6,8 @@ import json
 import csv
 import pandas as pd
 import os
+import win32com.client as win32
+from bs4 import BeautifulSoup
 
 
 # Function 1: import ticker list
@@ -55,17 +57,75 @@ def ReadCsv(path, headers):
 
 # Function 4: Detect new announcement
 def AntiJoin(current, previous):
-
     diff = set(current.announcementId).difference(previous.announcementId)
-    print(current.announcementId.isin(diff))
+    diff = current.announcementId.isin(diff)
+    diff = diff.to_frame('isDiff')
+    return diff
+
+
+# Function 5: send a table of new announcement to user
+def SendEmail(newResult):
+    To = "test@test.com"   # Feel free to change
+
+    outlook = win32.Dispatch('outlook.application')
+    mail = outlook.CreateItem(0)
+    mail.To = To
+    mail.Subject = "Listed Company Information Alert (IDX)"
+    mail.HTMLBody = """\
+    <html>
+    <head>
+    <style>
+    table {
+        border-collapse: collapse;
+        font-family:"Courier New", Courier, monospace;
+        font-size:60%
+    }
+    </style>
+    </head>
+
+    <body>
+        <p>Listed company information alert (IDX):<br>
+        <br>
+        </p>
+    """
+
+    newResult = newResult[['ticker', 'title', 'date', 'filePath']]
+    newResult.rename(columns={list(newResult)[0]: 'Ticker', list(newResult)[1]: 'Announcement title', list(newResult)[2]: 'date', list(newResult)[3]: 'Attachment'}, inplace=True)
+    newResult.date.loc[:] = newResult.date.str[:10]  # date formatting
+    htmlContent = newResult.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table>').replace('<th>', '<th style = "background-color: #5C6067; color: #61A8FA; border-collapse: collapse;">')
+    htmlContent = addHyperlink(htmlContent)
+    mail.HTMLBody = mail.HTMLBody + htmlContent
+
+    mail.HTMLBody = mail.HTMLBody + """
+    </body>
+    </html>
+    """
+    mail.Send()
+
+
+# Function 6: add hyperlink in html table
+def addHyperlink(html):
+    html = BeautifulSoup(html, "html.parser")
+    rows = html.tbody.find_all("tr")
+    for row in rows:
+        for cell in row:
+            if "http" in cell.string:
+                link = cell.string
+                cell.string = ""
+                newTag = html.new_tag("a", href=link)
+                cell.append(newTag)
+                cell.a.string = link
+                
+    return str(html)
 
 
 # File path to import list of ticker
-tickerListPath = '\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\TickerList.csv'
+tickerListPath = 'TickerList.csv'
 tickerList = ReadTicker(tickerListPath)
+pd.set_option('display.max_colwidth', -1)
 
 # File path of csv to contain web scraping result
-resultPath = '\\\\fileserver2\\bloomberg Share$\\Adam\\Python Script\\py\\result.csv'
+resultPath = 'result.csv'
 
 # Create list to contain web scraping result
 dataList = []
@@ -81,12 +141,13 @@ result = pd.DataFrame.from_records(dataList, columns=headers)
 # Check if 'result.csv' is already existed
 if (os.path.isfile(resultPath)):
     previousResult = ReadCsv(resultPath, headers)
-    AntiJoin(result, previousResult)
+    difference = AntiJoin(result, previousResult)
 
-    ###### Function to import email list ######
-    ###### Function to send email alert ######
+    result = pd.merge(result, difference, left_index=True, right_index=True)
+    newResult = result.query('isDiff==True')
 
-    result.to_csv(resultPath, sep=',')
-else:
-    result.to_csv(resultPath, sep=',')
-    print('not exist')
+    # if new announcement found
+    if len(newResult.index) > 0:
+        SendEmail(newResult)
+
+result.to_csv(resultPath, sep=',')
