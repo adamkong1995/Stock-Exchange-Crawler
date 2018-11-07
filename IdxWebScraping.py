@@ -118,36 +118,39 @@ def addHyperlink(html):
                 
     return str(html)
 
+def main():
+    # File path to import list of ticker
+    tickerListPath = 'TickerList.csv'
+    tickerList = ReadTicker(tickerListPath)
+    pd.set_option('display.max_colwidth', -1)
 
-# File path to import list of ticker
-tickerListPath = 'TickerList.csv'
-tickerList = ReadTicker(tickerListPath)
-pd.set_option('display.max_colwidth', -1)
+    # File path of csv to contain web scraping result
+    resultPath = 'result.csv'
 
-# File path of csv to contain web scraping result
-resultPath = 'result.csv'
+    # Create list to contain web scraping result
+    dataList = []
 
-# Create list to contain web scraping result
-dataList = []
+    for ticker in tickerList:
+        dataList.extend(Idx_spider(str(ticker)))
+        print(ticker)
 
-for ticker in tickerList:
-    dataList.extend(Idx_spider(str(ticker)))
-    print(ticker)
+    # Convert list to dataframe
+    headers = ['announcementId', 'ticker', 'title', 'date', 'attachmentId', 'fileName', 'filePath']
+    result = pd.DataFrame.from_records(dataList, columns=headers)
 
-# Convert list to dataframe
-headers = ['announcementId', 'ticker', 'title', 'date', 'attachmentId', 'fileName', 'filePath']
-result = pd.DataFrame.from_records(dataList, columns=headers)
+    # Check if 'result.csv' is already existed
+    if (os.path.isfile(resultPath)):
+        previousResult = ReadCsv(resultPath, headers)
+        difference = AntiJoin(result, previousResult)
 
-# Check if 'result.csv' is already existed
-if (os.path.isfile(resultPath)):
-    previousResult = ReadCsv(resultPath, headers)
-    difference = AntiJoin(result, previousResult)
+        result = pd.merge(result, difference, left_index=True, right_index=True)
+        newResult = result.query('isDiff==True')
 
-    result = pd.merge(result, difference, left_index=True, right_index=True)
-    newResult = result.query('isDiff==True')
+        # if new announcement found
+        if len(newResult.index) > 0:
+            SendEmail(newResult)
 
-    # if new announcement found
-    if len(newResult.index) > 0:
-        SendEmail(newResult)
+    result.to_csv(resultPath, sep=',')
 
-result.to_csv(resultPath, sep=',')
+if __name__ == '__main__':
+    main()
